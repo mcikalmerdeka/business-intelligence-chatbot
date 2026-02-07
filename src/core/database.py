@@ -3,6 +3,9 @@
 import psycopg2
 import streamlit as st
 from typing import Optional, List, Tuple
+from config import logger_db
+
+logger = logger_db
 
 
 class DatabaseConnection:
@@ -33,6 +36,7 @@ class DatabaseConnection:
             Database connection object or None if connection fails
         """
         try:
+            logger.info(f"Connecting to database {self.database} at {self.host}:{self.port}")
             connection = psycopg2.connect(
                 host=self.host,
                 database=self.database,
@@ -40,8 +44,10 @@ class DatabaseConnection:
                 password=self.password,
                 port=self.port
             )
+            logger.info(f"Successfully connected to database {self.database}")
             return connection
         except Exception as e:
+            logger.error(f"Database connection failed: {e}")
             st.error(f"Error with database connection: {e}")
             return None
     
@@ -52,11 +58,14 @@ class DatabaseConnection:
         Returns:
             True if connection successful, False otherwise
         """
+        logger.info(f"Testing connection to database {self.database}")
         connection = self.connect()
         if connection:
             connection.close()
+            logger.info(f"Connection test successful for database {self.database}")
             st.success(f"Connected to the database {self.database} successfully!")
             return True
+        logger.warning(f"Connection test failed for database {self.database}")
         return False
 
 
@@ -71,17 +80,21 @@ def execute_sql_query(db_connection: DatabaseConnection, query: str) -> Optional
     Returns:
         List of tuples containing query results, or None if error
     """
+    logger.debug(f"Executing SQL query: {query[:100]}...")
     connection = db_connection.connect()
     if connection:
         try:
             cursor = connection.cursor()
             cursor.execute(query)
             rows = cursor.fetchall()
+            logger.info(f"Query executed successfully, returned {len(rows)} rows")
             return rows
         except Exception as e:
+            logger.error(f"Query execution failed: {e}")
             st.error(f"Error executing query: {e}")
             return None
         finally:
             cursor.close()
             connection.close()
+            logger.debug("Database connection closed")
     return None

@@ -7,3 +7,6 @@ check_database_olist.sql
 
 # Python
 __pycache__/
+
+# Logs
+logs/

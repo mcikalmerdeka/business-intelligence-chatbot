@@ -1,6 +1,6 @@
 # Business Intelligence Chatbot with Langchain
 
-![Project Header](https://raw.githubusercontent.com/mcikalmerdeka/NLP-Learning/refs/heads/main/Business%20Intelligence%20Chatbot%20with%20Langchain/assets/Project%20Header.jpg)
+![Project Header](assets/Project%20Header.jpg)
 
 This repo is for using LLMs to chat with your SQL database. Inspired by this [Gemini Chatbot repo](https://github.com/ardyadipta/gemini_chatbot_sql). Instead of using MySQL I used PostgreSQL and instead of using Google Gemini model series, I experimented using OpenAI (GPT-4.1 mini) and Anthropic (Claude Haiku 4.5) models which are cost-effective for production use.
 
@@ -124,7 +124,6 @@ Two database options available:
    git clone https://github.com/mcikalmerdeka/NLP-Learning.git
    cd "NLP-Learning/Business Intelligence Chatbot with Langchain"
    ```
-
 2. Install dependencies:
 
    **Option A: Using uv (recommended)**
@@ -154,6 +153,7 @@ Two database options available:
    ```
 
    **Required dependencies** (from pyproject.toml):
+
    - faiss-cpu>=1.13.2
    - langchain>=1.2.3
    - langchain-anthropic>=1.3.1
@@ -165,7 +165,6 @@ Two database options available:
    - psycopg2>=2.9.11
    - python-dotenv>=1.2.1
    - streamlit>=1.52.2
-
 3. Create a `.env` file in the project root with your API and database credentials:
 
    ```
@@ -176,7 +175,6 @@ Two database options available:
    DB_HOST=your_database_host
    DB_PORT=your_database_port
    ```
-
 4. Set up the database:
 
    For single table approach:
@@ -214,7 +212,6 @@ Two database options available:
    ```
    streamlit run src/app_single_rag.py
    ```
-
 2. Access the application at `http://localhost:8501`
 3. Configure your database connection in the sidebar
 4. Start asking questions in natural language about your sales data!
@@ -243,7 +240,6 @@ Example queries for sales data:
    ```
    streamlit run src/app_multi_rag.py
    ```
-
 2. Access the application at `http://localhost:8501`
 3. Configure your database connection in the sidebar
 4. Start asking questions in natural language!

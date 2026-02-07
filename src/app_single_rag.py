@@ -16,10 +16,13 @@ from langchain_community.vectorstores import FAISS
 
 from config import (
     DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME_SINGLE,
-    MODEL_OPTIONS, SHOW_DEBUG_INFO, EMBEDDING_MODEL
+    MODEL_OPTIONS, SHOW_DEBUG_INFO, EMBEDDING_MODEL, setup_logger
 )
 from config.prompts import RESPONSE_GENERATION_SYSTEM_PROMPT
 from core import DatabaseConnection, execute_sql_query, LLMClient
+
+# Setup application logger - this initializes handlers
+logger = setup_logger("bi_chatbot")
 
 # Configure Streamlit
 st.set_page_config(page_title="Chat with your database through LLMs")
@@ -115,10 +118,12 @@ for message in st.session_state.chat_history:
 question = st.chat_input("Ask a question about your sales data")
 
 if question:
+    logger.info(f"User question received: {question}")
     st.chat_message("user").write(question)
     st.session_state.chat_history.append({"role": "user", "content": question})
     
     with st.spinner("Processing your query..."):
+        logger.info("Starting query processing pipeline")
         llm_client = LLMClient(st.session_state.model_choice)
         db_conn = DatabaseConnection(
             host=st.session_state["Host"],
@@ -172,6 +177,7 @@ if question:
                 st.session_state.chat_history.append({"role": "assistant", "content": error_message})
         else:
             error_message = "Failed to generate SQL query."
+            logger.error("SQL generation failed")
             st.error(error_message)
             st.session_state.chat_history.append({"role": "assistant", "content": error_message})
 
