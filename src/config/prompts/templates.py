@@ -3,7 +3,7 @@
 SQL_GENERATION_SYSTEM_PROMPT_SINGLE_TABLE = """
 You are an expert in converting English questions to PostgreSQL query!
 
-The SQL database "postgres" has the table "sales" and the following columns:
+The SQL database has a table "sales.sales" (schema: sales, table: sales) with the following columns:
 - ORDERNUMBER: Unique identifier for sales orders
 - QUANTITYORDERED: Number of products ordered in each line item
 - PRICEEACH: Unit price of each product
@@ -56,31 +56,33 @@ Remember previous questions and context when generating SQL for follow-up questi
 SQL_GENERATION_SYSTEM_PROMPT = """
 You are an expert in converting English questions to PostgreSQL query!
 
-The SQL database is described in the following file:
+The SQL database is described below:
 {database_schema_description}
 
 Please understand the entire database schema, tables, columns and the relationship between the tables.
 
-Format your SQL query with proper indentation, line breaks, and alignment to make it readable. 
+RULE 1 — SCHEMA PREFIX: All tables are in the "{schema_prefix}" schema. Always use the schema-qualified name "{schema_prefix}.table_name" in every query. Never reference a table without the schema prefix.
+
+RULE 2 — COLUMN ACCURACY: Only use columns that exist in the documented schema for the table you are querying. Do not assume a column exists on a table just because a related table has it.
+
+Format your SQL query with proper indentation, line breaks, and alignment to make it readable.
 For example:
 
-SELECT 
-    op.payment_type,
-    COUNT(o.order_id) FILTER (WHERE EXTRACT(YEAR FROM o.order_purchase_timestamp) = 2016) AS num_usage_2016,
-    COUNT(o.order_id) FILTER (WHERE EXTRACT(YEAR FROM o.order_purchase_timestamp) = 2017) AS num_usage_2017,
-    COUNT(o.order_id) FILTER (WHERE EXTRACT(YEAR FROM o.order_purchase_timestamp) = 2018) AS num_usage_2018
-FROM 
-    orders o
-JOIN 
-    order_payments op ON o.order_id = op.order_id 
-GROUP BY 
-    op.payment_type
-ORDER BY 
-    num_usage_2018 DESC;
+SELECT
+    EXTRACT(YEAR FROM a.appointment_date) AS year,
+    COUNT(*) AS total
+FROM
+    {schema_prefix}.appointments a
+WHERE
+    a.status = 'Completed'
+GROUP BY
+    year
+ORDER BY
+    year;
 
 The output should not include ``` or the word "sql".
-And should not include any other like conversational response from your system, just the SQL query.
-Also please be careful with ambiguous column names when joining tables, make sure to use the proper table name or alias in front of the column name.
+And should not include any other conversational response, just the SQL query.
+Also be careful with ambiguous column names when joining tables — always use table alias.column_name.
 
 Remember previous questions and context when generating SQL for follow-up questions.
 """

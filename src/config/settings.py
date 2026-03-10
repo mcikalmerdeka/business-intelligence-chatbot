@@ -10,14 +10,9 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-# Database Configuration
-DB_HOST = "localhost"
-DB_PORT = "5432"
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME_SINGLE = os.getenv("DB_NAME_1")  # For single table approach
-DB_NAME_OLIST = os.getenv("DB_NAME_2")   # For Olist e-commerce database
-DB_NAME_WRS = os.getenv("DB_NAME_3")     # For WRS EHR database
+# Database Configuration — Neon Postgres
+# DATABASE_URL is the primary connection method (pooler endpoint for Neon)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Model Configuration
 MODEL_OPTIONS = {
@@ -28,11 +23,26 @@ MODEL_OPTIONS = {
 # Embedding Model
 EMBEDDING_MODEL = "text-embedding-3-large"
 
-# Vector Store Configuration
-FAISS_INDEX_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "faiss_index_store")
+# Vector Store base directory
+_FAISS_BASE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "faiss_index_store")
+FAISS_INDEX_PATH = _FAISS_BASE  # kept for backward compat (single-table RAG)
 
-# Schema Paths (using relative paths from project root)
-SCHEMA_PATH_MULTI = "datasets/dataset_multiple_tables/wrs_ehr_db/ehr_database_docs.md"
+# Multi-table dataset configurations
+DATASET_CONFIGS = {
+    "WRS EHR Database": {
+        "schema_path": "datasets/dataset_multiple_tables/wrs_ehr_db/ehr_database_docs.md",
+        "schema_prefix": "wrs",
+        "faiss_path": os.path.join(_FAISS_BASE, "wrs"),
+    },
+    "Olist E-Commerce": {
+        "schema_path": "datasets/dataset_multiple_tables/olist_db/olist_database_docs.md",
+        "schema_prefix": "olist",
+        "faiss_path": os.path.join(_FAISS_BASE, "olist"),
+    },
+}
+
+# Legacy single-path kept for backward compat (basic multi app)
+SCHEMA_PATH_MULTI = DATASET_CONFIGS["WRS EHR Database"]["schema_path"]
 
 # App Configuration
 SHOW_DEBUG_INFO = True  # Show SQL queries and results for debugging

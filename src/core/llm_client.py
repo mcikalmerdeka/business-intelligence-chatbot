@@ -4,7 +4,7 @@ import streamlit as st
 from typing import Optional, List, Dict
 from openai import OpenAI
 from anthropic import Anthropic
-from config import OPENAI_API_KEY, ANTHROPIC_API_KEY, logger_llm
+from config import OPENAI_API_KEY, ANTHROPIC_API_KEY, MODEL_OPTIONS, logger_llm
 
 logger = logger_llm
 
@@ -22,39 +22,28 @@ class LLMClient:
         self.model_choice = model_choice
         self.client = self._initialize_client()
     
+    def _is_openai_model(self) -> bool:
+        model_id = MODEL_OPTIONS.get(self.model_choice, self.model_choice)
+        return model_id.startswith("gpt-") or model_id.startswith("o1") or model_id.startswith("o3")
+
     def _initialize_client(self):
-        """Initialize the appropriate API client based on model choice"""
         logger.info(f"Initializing LLM client for model: {self.model_choice}")
-        if self.model_choice in ["GPT-4o", "GPT-4.1"]:
+        if self._is_openai_model():
             return OpenAI(api_key=OPENAI_API_KEY)
-        else:
-            return Anthropic(api_key=ANTHROPIC_API_KEY)
-    
+        return Anthropic(api_key=ANTHROPIC_API_KEY)
+
     def generate_response(
-        self, 
-        question: str, 
-        system_prompt: str, 
+        self,
+        question: str,
+        system_prompt: str,
         history: Optional[List[Dict[str, str]]] = None
     ) -> Optional[str]:
-        """
-        Generate a response from the LLM
-        
-        Args:
-            question: User question
-            system_prompt: System prompt for the LLM
-            history: Conversation history (optional)
-            
-        Returns:
-            Generated response text or None if error
-        """
         try:
             logger.info(f"Generating response with model: {self.model_choice}")
-            if self.model_choice == "GPT-4o":
-                return self._generate_openai_response(question, system_prompt, "gpt-4o", history)
-            elif self.model_choice == "GPT-4.1":
-                return self._generate_openai_response(question, system_prompt, "gpt-4.1", history)
-            else:
-                return self._generate_anthropic_response(question, system_prompt, history)
+            model_id = MODEL_OPTIONS.get(self.model_choice, self.model_choice)
+            if self._is_openai_model():
+                return self._generate_openai_response(question, system_prompt, model_id, history)
+            return self._generate_anthropic_response(question, system_prompt, history)
         except Exception as e:
             logger.error(f"LLM API error: {e}")
             st.error(f"Error with model API: {e}")
@@ -92,7 +81,7 @@ class LLMClient:
     ) -> str:
         """Generate response using Anthropic API"""
         # Determine the model name
-        model_name = "claude-sonnet-4-20250514" if self.model_choice == "Claude Sonnet 4" else "claude-3-7-sonnet-20250219"
+        model_name = MODEL_OPTIONS.get(self.model_choice, self.model_choice)
         logger.debug(f"Calling Anthropic API with model: {model_name}")
         
         messages = []

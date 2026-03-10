@@ -10,62 +10,57 @@ logger = logger_db
 
 class DatabaseConnection:
     """Manage database connections and operations"""
-    
-    def __init__(self, host: str, database: str, user: str, password: str, port: str = "5432"):
+
+    def __init__(self, dsn: Optional[str] = None, *, host: str = "", database: str = "", user: str = "", password: str = "", port: str = "5432"):
         """
-        Initialize database connection parameters
-        
+        Accepts either a full DSN/URL (preferred for Neon) or individual params.
+
         Args:
-            host: Database host
-            database: Database name
-            user: Database user
-            password: Database password
-            port: Database port (default: 5432)
+            dsn: Full connection URI, e.g. postgresql://user:pass@host/db?sslmode=require
+            host: Database host (ignored when dsn is provided)
+            database: Database name (ignored when dsn is provided)
+            user: Database user (ignored when dsn is provided)
+            password: Database password (ignored when dsn is provided)
+            port: Database port (ignored when dsn is provided)
         """
+        self.dsn = dsn
         self.host = host
         self.database = database
         self.user = user
         self.password = password
         self.port = port
-    
+
     def connect(self) -> Optional[psycopg2.extensions.connection]:
-        """
-        Establish connection to the database
-        
-        Returns:
-            Database connection object or None if connection fails
-        """
         try:
-            logger.info(f"Connecting to database {self.database} at {self.host}:{self.port}")
-            connection = psycopg2.connect(
-                host=self.host,
-                database=self.database,
-                user=self.user,
-                password=self.password,
-                port=self.port
-            )
-            logger.info(f"Successfully connected to database {self.database}")
+            if self.dsn:
+                logger.info("Connecting via DATABASE_URL")
+                connection = psycopg2.connect(self.dsn)
+            else:
+                logger.info(f"Connecting to database {self.database} at {self.host}:{self.port}")
+                connection = psycopg2.connect(
+                    host=self.host,
+                    database=self.database,
+                    user=self.user,
+                    password=self.password,
+                    port=self.port,
+                )
+            logger.info("Database connection established")
             return connection
         except Exception as e:
             logger.error(f"Database connection failed: {e}")
             st.error(f"Error with database connection: {e}")
             return None
-    
+
     def test_connection(self) -> bool:
-        """
-        Test database connection
-        
-        Returns:
-            True if connection successful, False otherwise
-        """
-        logger.info(f"Testing connection to database {self.database}")
+        label = self.database or "neon"
+        logger.info(f"Testing connection to database {label}")
         connection = self.connect()
         if connection:
             connection.close()
-            logger.info(f"Connection test successful for database {self.database}")
-            st.success(f"Connected to the database {self.database} successfully!")
+            logger.info(f"Connection test successful for database {label}")
+            st.success(f"Connected to database {label} successfully!")
             return True
-        logger.warning(f"Connection test failed for database {self.database}")
+        logger.warning(f"Connection test failed for database {label}")
         return False
 
 

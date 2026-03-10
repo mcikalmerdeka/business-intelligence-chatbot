@@ -11,15 +11,11 @@ from config import EMBEDDING_MODEL, FAISS_INDEX_PATH, SCHEMA_PATH_MULTI, logger_
 logger = logger_rag
 
 
-def load_schema_description() -> str:
-    """
-    Load database schema description from local file
-        
-    Returns:
-        Schema description text
-    """
+def load_schema_description(schema_path: str = None) -> str:
+    """Load database schema description from a local file."""
+    path = schema_path or SCHEMA_PATH_MULTI
     try:
-        with open(SCHEMA_PATH_MULTI, "r", encoding="utf-8") as file:
+        with open(path, "r", encoding="utf-8") as file:
             return file.read()
     except Exception as e:
         st.error(f"Error reading schema file: {e}")
@@ -60,51 +56,69 @@ def chunk_schema_text(content: str) -> List[str]:
 
 class RAGEngine:
     """Handle RAG operations for schema retrieval"""
-    
-    def __init__(self, recreate_index: bool = False):
+
+    def __init__(self, recreate_index: bool = False, schema_path: str = None, index_path: str = None):
         """
-        Initialize RAG engine
-        
+        Initialize RAG engine.
+
         Args:
             recreate_index: Whether to recreate the FAISS index
+            schema_path: Path to the schema markdown file (defaults to WRS)
+            index_path: Path to store/load the FAISS index (defaults to FAISS_INDEX_PATH)
         """
-        logger.info(f"Initializing RAG engine (recreate_index={recreate_index})")
+        self.schema_path = schema_path or SCHEMA_PATH_MULTI
+        self.index_path = index_path or FAISS_INDEX_PATH
+        logger.info(f"Initializing RAG engine (schema={self.schema_path}, recreate={recreate_index})")
         self.embedding_model = OpenAIEmbeddings(model=EMBEDDING_MODEL)
         self.vector_store = self._load_or_create_index(recreate_index)
-    
+
     def _load_or_create_index(self, recreate: bool = False) -> FAISS:
-        """Load existing or create new FAISS index"""
-        logger.info("Loading or creating FAISS index")
-        if recreate and os.path.exists(FAISS_INDEX_PATH):
-            import shutil
+        """Load existing FAISS index from disk, or build and save a new one."""
+        import shutil
+
+        index_exists = os.path.exists(self.index_path) and os.path.isdir(self.index_path)
+
+        if recreate and index_exists:
             try:
-                shutil.rmtree(FAISS_INDEX_PATH)
-                logger.info("Removed existing index for recreation")
-                st.info("Recreating vector index with proper text chunking...")
+                shutil.rmtree(self.index_path)
+                logger.info(f"Removed existing index at {self.index_path} for recreation")
+                index_exists = False
             except Exception as e:
                 logger.warning(f"Could not remove old index: {e}")
-                st.warning(f"Could not remove old index: {e}")
-        
-        # Load schema and create chunks
-        schema_content = load_schema_description()
+
+        # Load from disk if available — avoids hitting the embeddings API
+        if index_exists:
+            try:
+                logger.info(f"Loading FAISS index from disk: {self.index_path}")
+                vector_store = FAISS.load_local(
+                    self.index_path,
+                    self.embedding_model,
+                    allow_dangerous_deserialization=True,
+                )
+                logger.info("FAISS index loaded from disk successfully")
+                return vector_store
+            except Exception as e:
+                logger.warning(f"Failed to load index from disk, rebuilding: {e}")
+
+        # Build from schema
+        logger.info(f"Building FAISS index from schema: {self.schema_path}")
+        schema_content = load_schema_description(self.schema_path)
         if not schema_content:
             logger.error("Failed to load schema description")
             st.error("Failed to load schema description!")
             return None
-        
+
         chunks = chunk_schema_text(schema_content)
         logger.info(f"Created {len(chunks)} chunks from schema")
         if not chunks:
             logger.error("No valid chunks created from schema")
             st.error("No valid chunks created from schema!")
             return None
-        
-        # Create FAISS index
-        logger.info("Creating FAISS vector store")
+
         vector_store = FAISS.from_texts(chunks, embedding=self.embedding_model)
-        vector_store.save_local(FAISS_INDEX_PATH)
-        logger.info(f"FAISS index saved to {FAISS_INDEX_PATH}")
-        
+        os.makedirs(self.index_path, exist_ok=True)
+        vector_store.save_local(self.index_path)
+        logger.info(f"FAISS index built and saved to {self.index_path}")
         return vector_store
     
     def retrieve_relevant_schema(self, query: str, k: int = 5) -> List[Document]:
