@@ -47,9 +47,9 @@ Business Intelligence Chatbot with Langchain/
 │   ├── db/                            # Database-related utilities
 │   │   └── __init__.py
 │   │
-│   ├── faiss_index_store/             # Vector embeddings storage
-│   │   ├── index.faiss
-│   │   └── index.pkl
+│   ├── faiss_index_store/             # Vector embeddings storage (per dataset)
+│   │   ├── wrs/                       # FAISS index for WRS EHR schema
+│   │   └── olist/                     # FAISS index for Olist schema
 │   │
 │   ├── app_single_basic.py            # Single table - Basic approach
 │   ├── app_single_rag.py              # Single table - With RAG
@@ -60,18 +60,16 @@ Business Intelligence Chatbot with Langchain/
 │   ├── dataset_single_table/          # Sales data CSV
 │   └── dataset_multiple_tables/
 │       ├── olist_db/                  # E-commerce datasets
-│       │   ├── *.csv (9 tables)
-│       │   ├── database_schema_description.doc
+│       │   ├── *.csv (8 tables)
+│       │   ├── olist_database_docs.md # Schema documentation for RAG
 │       │   └── rag_test_questions.md
 │       └── wrs_ehr_db/                # Healthcare EHR datasets
-│           ├── *.csv (9 tables)
-│           ├── ehr_database_docs.md
+│           ├── *.csv (8 tables)
+│           ├── ehr_database_docs.md   # Schema documentation for RAG
 │           └── rag_test_questions.md
 │
 ├── assets/                            # Project images and diagrams
-├── pyproject.toml
 ├── requirements.txt
-├── uv.lock
 ├── .env
 └── README.md
 ```
@@ -88,32 +86,34 @@ Business Intelligence Chatbot with Langchain/
 - `app_multi_basic.py`: Full schema loaded approach
 - `app_multi_rag.py`: RAG-enhanced for better context retrieval (recommended)
 
-Two database options available:
+Both multi-table apps include a **dataset selector** in the sidebar to switch between:
 
-- **Olist DB**: Brazilian e-commerce dataset with 9 tables
-- **WRS EHR DB**: Healthcare electronic health records with 9 tables
+- **Olist DB**: Brazilian e-commerce dataset (8 tables, `olist` schema)
+- **WRS EHR DB**: Healthcare electronic health records (8 tables, `wrs` schema)
 
 ## 🚀 Features
 
 - **Natural Language to SQL Conversion**: Convert plain English queries into SQL statements
 - **RAG-Enhanced Architecture**: Uses retrieval-augmented generation to improve contextual understanding of database schema
-- **Multi-Database Support**:
-  - Olist e-commerce dataset (9 tables)
-  - WRS EHR healthcare dataset (9 tables)
+- **Multi-Dataset Support** with in-app switching:
+  - Olist e-commerce dataset (8 tables)
+  - WRS EHR healthcare dataset (8 tables)
   - Single table sales analysis
-- **Streamlit UI**: User-friendly interface for interacting with the database
+- **Neon Serverless Postgres**: Cloud-hosted PostgreSQL with schema-level dataset isolation (`sales`, `olist`, `wrs` schemas in one database)
+- **Per-Dataset FAISS Index**: Each dataset maintains its own vector index, loaded from disk on subsequent runs to avoid redundant embedding API calls
+- **Streamlit UI**: User-friendly interface with example questions expander for each dataset
 - **Multiple LLM Support**: GPT-4.1 mini and Claude Haiku 4.5 (cost-effective models)
+- **Provider-Aware Routing**: LLM client auto-detects OpenAI vs Anthropic from the model ID — adding new models only requires a one-line change in `settings.py`
 - **Detailed Response Generation**: Formats query results into natural, conversational responses
 - **Conversational Memory**: Maintains chat history to support follow-up questions and contextual conversations
-- **Clear Chat Functionality**: Easily reset conversations with a "Clear Chat History" button in the sidebar
-- **Chat Interface**: Modern chat-style UI for a more natural conversation experience
+- **Secure Connection**: Database URL is stored server-side and never exposed in the UI
 
 ## 🔧 Setup and Installation
 
 ### Prerequisites
 
 - Python 3.12+
-- PostgreSQL database
+- [Neon](https://neon.tech) account (free tier is sufficient)
 - OpenAI API key and/or Anthropic API key
 
 ### Installation
@@ -124,35 +124,16 @@ Two database options available:
    git clone https://github.com/mcikalmerdeka/NLP-Learning.git
    cd "NLP-Learning/Business Intelligence Chatbot with Langchain"
    ```
+
 2. Install dependencies:
 
-   **Option A: Using uv (recommended)**
-
-   Sync from pyproject.toml:
-
-   ```bash
-   uv sync
-   ```
-
-   Or install from requirements.txt:
-
-   ```bash
-   uv add -r requirements.txt
-   ```
-
-   **Option B: Using pip**
-
-   ```bash
-   pip install -e .
-   ```
-
-   Or from requirements.txt:
+   **Option A: Using pip**
 
    ```bash
    pip install -r requirements.txt
    ```
 
-   **Required dependencies** (from pyproject.toml):
+   **Required dependencies:**
 
    - faiss-cpu>=1.13.2
    - langchain>=1.2.3
@@ -165,34 +146,42 @@ Two database options available:
    - psycopg2>=2.9.11
    - python-dotenv>=1.2.1
    - streamlit>=1.52.2
-3. Create a `.env` file in the project root with your API and database credentials:
+
+3. Create a `.env` file in the project root:
 
    ```
+   # Neon Postgres connection string (get from https://console.neon.tech)
+   DATABASE_URL=postgresql://user:password@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require
+
+   # Model API Keys
    OPENAI_API_KEY=your_openai_api_key
    ANTHROPIC_API_KEY=your_anthropic_api_key
-   DB_USER=your_database_username
-   DB_PASSWORD=your_database_password
-   DB_HOST=your_database_host
-   DB_PORT=your_database_port
    ```
-4. Set up the database:
 
-   For single table approach:
+   > The `DATABASE_URL` uses the **pooler endpoint** (contains `-pooler` in the hostname) for efficient connection handling in serverless/short-lived environments.
 
-   ```
+4. Set up the database on Neon:
+
+   All three datasets are loaded into the **same Neon database** under separate PostgreSQL schemas for isolation. Run from the project root:
+
+   ```bash
+   # Sales data → sales.sales table
    python src/utils/database_setup_single_table.py
-   ```
 
-   For multiple tables approach (Olist e-commerce):
-
-   ```
+   # Olist e-commerce → olist.* tables
    python src/utils/database_setup_multiple_tables_olist.py
-   ```
 
-   For multiple tables approach (WRS EHR healthcare):
-
-   ```
+   # WRS EHR healthcare → wrs.* tables
    python src/utils/database_setup_multiple_tables_wrs.py
+   ```
+
+   **Schema layout in Neon:**
+
+   ```
+   neondb (database)
+   ├── sales schema  →  sales.sales
+   ├── olist schema  →  olist.customers, olist.orders, olist.order_items, ...
+   └── wrs schema    →  wrs.patients, wrs.appointments, wrs.diagnoses, ...
    ```
 
 ## 💻 Usage
@@ -203,18 +192,20 @@ Two database options available:
 
    Basic version (recommended):
 
-   ```
+   ```bash
    streamlit run src/app_single_basic.py
    ```
 
    Or with RAG:
 
-   ```
+   ```bash
    streamlit run src/app_single_rag.py
    ```
+
 2. Access the application at `http://localhost:8501`
-3. Configure your database connection in the sidebar
-4. Start asking questions in natural language about your sales data!
+3. Select an AI model from the sidebar
+4. Click **Test Connection** to verify the database is reachable
+5. Start asking questions in natural language about your sales data!
 
 Example queries for sales data:
 
@@ -231,25 +222,28 @@ Example queries for sales data:
 
    Basic version:
 
-   ```
+   ```bash
    streamlit run src/app_multi_basic.py
    ```
 
    Or with RAG (recommended for multi-table):
 
-   ```
+   ```bash
    streamlit run src/app_multi_rag.py
    ```
+
 2. Access the application at `http://localhost:8501`
-3. Configure your database connection in the sidebar
-4. Start asking questions in natural language!
+3. Select an AI model from the sidebar
+4. Select a **dataset** from the sidebar — switching datasets automatically clears the chat and loads the correct schema context
+5. Click **Test Connection** to verify the database is reachable
+6. Start asking questions in natural language!
 
 **Example queries for Olist e-commerce data:**
 
 - "What is the average monthly active user count for each year?"
 - "Show me the number of customers who made more than one purchase (repeat orders) for each year!"
-- "What are the top product categories by revenue per month?"
-- "Displays detailed information on the amount of usage for each type of payment for each year!"
+- "What are the top product categories by total revenue?"
+- "Show detailed information on the amount of usage for each payment type per year"
 - "Which one showed the most significant increase?" (follow-up question)
 - "Break down those results by customer location" (contextual follow-up)
 
@@ -257,9 +251,26 @@ Example queries for sales data:
 
 - "How many patients were diagnosed with diabetes in 2024?"
 - "What are the most common diagnoses across all facilities?"
-- "Show me the average lab result values by diagnosis type"
+- "Show me the top 10 most prescribed medications"
 - "Which providers have the highest patient appointment counts?"
 - "What insurance plans are most frequently used?"
+
+## ☁️ Deploying to Streamlit Cloud
+
+1. Push your code to a public GitHub repository
+2. Go to [share.streamlit.io](https://share.streamlit.io) and create a new app pointing to your repo
+3. Set the **Main file path** to one of the app files (e.g. `src/app_multi_rag.py`)
+4. Under **Settings → Secrets**, add your credentials in TOML format:
+
+   ```toml
+   DATABASE_URL = "postgresql://user:password@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require"
+   OPENAI_API_KEY = "sk-..."
+   ANTHROPIC_API_KEY = "sk-ant-..."
+   ```
+
+5. Deploy — the app will read secrets from the environment automatically via `python-dotenv` / Streamlit's secrets management
+
+> **Note:** The `datasets/` folder (CSVs) and `faiss_index_store/` are only needed locally for setup and the RAG index build. After the FAISS index is committed to the repo (or rebuilt on first run), the app only needs the `DATABASE_URL` to query Neon.
 
 ## ⚙️ How It Works
 
@@ -270,15 +281,15 @@ sequenceDiagram
     participant User
     participant Streamlit UI
     participant LLMClient
-    participant Database
+    participant Neon DB
 
     User->>Streamlit UI: Submit natural language query
-    Streamlit UI->>Streamlit UI: Load full schema description
+    Streamlit UI->>Streamlit UI: Load full schema description from file
     Streamlit UI->>LLMClient: Send query + full schema + chat history
     LLMClient->>LLMClient: Generate SQL query
     LLMClient-->>Streamlit UI: Return SQL query
-    Streamlit UI->>Database: Execute SQL query
-    Database-->>Streamlit UI: Return query results
+    Streamlit UI->>Neon DB: Execute SQL query
+    Neon DB-->>Streamlit UI: Return query results
     Streamlit UI->>LLMClient: Send results + question + history
     LLMClient->>LLMClient: Generate human-friendly response
     LLMClient-->>Streamlit UI: Return formatted response
@@ -288,9 +299,9 @@ sequenceDiagram
 **Flow:**
 
 1. User submits a natural language query
-2. Full database schema is loaded from file/configuration
-3. LLM converts query to SQL using complete schema information
-4. SQL query is executed against the database
+2. Full database schema is loaded from the markdown documentation file
+3. LLM converts query to SQL using the complete schema information
+4. SQL query is executed against Neon Postgres
 5. Results are passed back to LLM for human-friendly response generation
 6. Conversation context is maintained for follow-up questions
 
@@ -303,14 +314,14 @@ sequenceDiagram
     participant RAGEngine
     participant FAISS Index
     participant LLMClient
-    participant Database
+    participant Neon DB
 
     Note over RAGEngine,FAISS Index: Initialization Phase
-    RAGEngine->>RAGEngine: Load schema description
+    RAGEngine->>RAGEngine: Load schema description for selected dataset
     RAGEngine->>RAGEngine: Chunk schema into segments
-    RAGEngine->>FAISS Index: Embed and store chunks
+    RAGEngine->>FAISS Index: Embed and store chunks (skipped if index exists on disk)
 
-    Note over User,Database: Query Phase
+    Note over User,Neon DB: Query Phase
     User->>Streamlit UI: Submit natural language query
     Streamlit UI->>RAGEngine: Request relevant schema
     RAGEngine->>FAISS Index: Similarity search (k=5)
@@ -319,8 +330,8 @@ sequenceDiagram
     Streamlit UI->>LLMClient: Send query + retrieved schema + history
     LLMClient->>LLMClient: Generate SQL query
     LLMClient-->>Streamlit UI: Return SQL query
-    Streamlit UI->>Database: Execute SQL query
-    Database-->>Streamlit UI: Return query results
+    Streamlit UI->>Neon DB: Execute SQL query
+    Neon DB-->>Streamlit UI: Return query results
     Streamlit UI->>LLMClient: Send results + question + history
     LLMClient->>LLMClient: Generate human-friendly response
     LLMClient-->>Streamlit UI: Return formatted response
@@ -329,11 +340,11 @@ sequenceDiagram
 
 **Flow:**
 
-1. **Initialization**: Database schema descriptions are embedded and stored in a FAISS vector index
+1. **Initialization**: Schema docs are chunked, embedded via OpenAI, and stored in a per-dataset FAISS index. On subsequent runs the index loads from disk — no API calls needed
 2. User submits a natural language query
 3. RAG engine retrieves only the most relevant schema chunks via similarity search
-4. Context-enriched schema information is sent to LLM for SQL generation
-5. Generated SQL is executed against the database
+4. Context-enriched schema is sent to LLM for SQL generation
+5. Generated SQL is executed against Neon Postgres
 6. Results are formatted into natural language response
 7. Chat history provides context for follow-up questions
 
@@ -343,12 +354,12 @@ sequenceDiagram
 
 - Support for more complex database schemas and relationships
 - Integration with local models (Deepseek, Qwen, Llama)
-- Advanced data visualization of query results
+- Advanced data visualization of query results (charts, graphs)
 - Fine-tuning models for improved SQL generation accuracy
-- Support for database operations beyond querying (inserts, updates)
+- Support for database write operations (inserts, updates)
 - Enhanced conversation memory management
-- User authentication and personalized query history
 - Query result caching for improved performance
+- Multi-tenant support with per-user query history
 
 ## 📧 Contact
 
