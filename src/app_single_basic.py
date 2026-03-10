@@ -10,7 +10,7 @@ import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import (
-    DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME_SINGLE,
+    DATABASE_URL,
     MODEL_OPTIONS, SHOW_DEBUG_INFO, setup_logger
 )
 from config.prompts import SQL_GENERATION_SYSTEM_PROMPT_SINGLE_TABLE, RESPONSE_GENERATION_SYSTEM_PROMPT
@@ -37,6 +37,35 @@ st.expander("ℹ️ About Single-Table Database Chat").markdown(
     """
 )
 
+st.expander("💡 Example Questions").markdown(
+    """
+    Copy any question below and paste it into the chat box to get started!
+
+    **Sales & Revenue**
+    - What were the total sales in 2003 and 2004?
+    - Which product line has the highest average order value?
+    - What is the total revenue by country?
+    - What are the top 5 products by total sales amount?
+
+    **Customers**
+    - Show me the top 5 customers by revenue
+    - What is the phone number of customer Toys of Finland, Co.?
+    - Which countries have the most customers?
+
+    **Orders & Products**
+    - How many orders were placed in each quarter of 2004?
+    - What is the distribution of deal sizes (Small, Medium, Large)?
+    - Which product line had the most orders shipped in 2003?
+    - What is the average order quantity per product line?
+
+    **Follow-up Examples** *(ask these after an initial question)*
+    - What about for 2005?
+    - Which of them had the highest growth?
+    - Break that down by product line.
+    - Show me the same for the top 3 countries.
+    """
+)
+
 # Sidebar
 with st.sidebar:
     # Model settings
@@ -49,21 +78,9 @@ with st.sidebar:
     
     # Database settings
     st.subheader("Database Settings")
-    st.text_input("Host", value=DB_HOST, key="Host")
-    st.text_input("Port", value=DB_PORT, key="Port")
-    st.text_input("User", value=DB_USER, key="User")
-    st.text_input("Password", type="password", value=DB_PASSWORD, key="Password")
-    st.text_input("Database", value=DB_NAME_SINGLE, key="Database")
-    
     if st.button("Test Connection"):
         with st.spinner("Testing database connection..."):
-            db_conn = DatabaseConnection(
-                host=st.session_state["Host"],
-                database=st.session_state["Database"],
-                user=st.session_state["User"],
-                password=st.session_state["Password"],
-                port=st.session_state["Port"]
-            )
+            db_conn = DatabaseConnection(dsn=DATABASE_URL)
             db_conn.test_connection()
     
     # Chat controls
@@ -92,13 +109,7 @@ if question:
         logger.info("Starting query processing pipeline")
         # Initialize LLM client and database connection
         llm_client = LLMClient(st.session_state.model_choice)
-        db_conn = DatabaseConnection(
-            host=st.session_state["Host"],
-            database=st.session_state["Database"],
-            user=st.session_state["User"],
-            password=st.session_state["Password"],
-            port=st.session_state["Port"]
-        )
+        db_conn = DatabaseConnection(dsn=DATABASE_URL)
         
         # Get conversation history
         model_history = st.session_state.chat_history[:-1] if len(st.session_state.chat_history) > 1 else None

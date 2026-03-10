@@ -15,7 +15,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from config import (
-    DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME_SINGLE,
+    DATABASE_URL,
     MODEL_OPTIONS, SHOW_DEBUG_INFO, EMBEDDING_MODEL, setup_logger
 )
 from config.prompts import RESPONSE_GENERATION_SYSTEM_PROMPT
@@ -30,25 +30,25 @@ st.header("Chat with your database through LLMs")
 
 # Schema descriptions for single table
 SCHEMA_DESCRIPTIONS = [
-    "Table: sales, Column: ORDERNUMBER, Description: Unique identifier for sales order",
-    "Table: sales, Column: QUANTITYORDERED, Description: Number of quantity of products sold in units",
-    "Table: sales, Column: SALES, Description: Amount of sales or revenue in USD",
-    "Table: sales, Column: PRODUCTLINE, Description: Line of products",
-    "Table: sales, Column: ORDERDATE, Description: Date of the order",
-    "Table: sales, Column: STATUS, Description: Current status of the order",
-    "Table: sales, Column: QTR_ID, Description: Quarter of the year (1-4)",
-    "Table: sales, Column: MONTH_ID, Description: Month of the year (1-12)",
-    "Table: sales, Column: YEAR_ID, Description: Year when the order was placed",
-    "Table: sales, Column: MSRP, Description: Manufacturer's suggested retail price",
-    "Table: sales, Column: PRODUCTCODE, Description: Unique code identifying the product",
-    "Table: sales, Column: CUSTOMERNAME, Description: Name of the customer",
-    "Table: sales, Column: PHONE, Description: Customer's phone number",
-    "Table: sales, Column: ADDRESSLINE1, Description: First line of customer's address",
-    "Table: sales, Column: CITY, Description: Customer's city",
-    "Table: sales, Column: STATE, Description: Customer's state or province",
-    "Table: sales, Column: COUNTRY, Description: Customer's country",
-    "Table: sales, Column: TERRITORY, Description: Sales territory",
-    "Table: sales, Column: DEALSIZE, Description: Size of the deal (Small, Medium, Large)"
+    "Table: sales.sales, Column: ORDERNUMBER, Description: Unique identifier for sales order",
+    "Table: sales.sales, Column: QUANTITYORDERED, Description: Number of quantity of products sold in units",
+    "Table: sales.sales, Column: SALES, Description: Amount of sales or revenue in USD",
+    "Table: sales.sales, Column: PRODUCTLINE, Description: Line of products",
+    "Table: sales.sales, Column: ORDERDATE, Description: Date of the order",
+    "Table: sales.sales, Column: STATUS, Description: Current status of the order",
+    "Table: sales.sales, Column: QTR_ID, Description: Quarter of the year (1-4)",
+    "Table: sales.sales, Column: MONTH_ID, Description: Month of the year (1-12)",
+    "Table: sales.sales, Column: YEAR_ID, Description: Year when the order was placed",
+    "Table: sales.sales, Column: MSRP, Description: Manufacturer's suggested retail price",
+    "Table: sales.sales, Column: PRODUCTCODE, Description: Unique code identifying the product",
+    "Table: sales.sales, Column: CUSTOMERNAME, Description: Name of the customer",
+    "Table: sales.sales, Column: PHONE, Description: Customer's phone number",
+    "Table: sales.sales, Column: ADDRESSLINE1, Description: First line of customer's address",
+    "Table: sales.sales, Column: CITY, Description: Customer's city",
+    "Table: sales.sales, Column: STATE, Description: Customer's state or province",
+    "Table: sales.sales, Column: COUNTRY, Description: Customer's country",
+    "Table: sales.sales, Column: TERRITORY, Description: Sales territory",
+    "Table: sales.sales, Column: DEALSIZE, Description: Size of the deal (Small, Medium, Large)"
 ]
 
 SQL_GENERATION_PROMPT = """
@@ -56,6 +56,8 @@ You are an expert in converting English questions to PostgreSQL query!
 
 Based on the following database schema information:
 {retrieved_schema}
+
+IMPORTANT: The table is in the "sales" schema. Always use the schema-qualified name "sales.sales" in every query.
 
 Format your SQL query with proper indentation and line breaks.
 The output should not include ``` or the word "sql".
@@ -82,27 +84,44 @@ st.expander("ℹ️ About Single-Table Database Chat with RAG").markdown(
     """
 )
 
+st.expander("💡 Example Questions").markdown(
+    """
+    Copy any question below and paste it into the chat box to get started!
+
+    **Sales & Revenue**
+    - What were the total sales in 2003 and 2004?
+    - Which product line has the highest average order value?
+    - What is the total revenue by country?
+    - What are the top 5 products by total sales amount?
+
+    **Customers**
+    - Show me the top 5 customers by revenue
+    - What is the phone number of customer Toys of Finland, Co.?
+    - Which countries have the most customers?
+
+    **Orders & Products**
+    - How many orders were placed in each quarter of 2004?
+    - What is the distribution of deal sizes (Small, Medium, Large)?
+    - Which product line had the most orders shipped in 2003?
+    - What is the average order quantity per product line?
+
+    **Follow-up Examples** *(ask these after an initial question)*
+    - What about for 2005?
+    - Which of them had the highest growth?
+    - Break that down by product line.
+    - Show me the same for the top 3 countries.
+    """
+)
+
 # Sidebar
 with st.sidebar:
     st.subheader("Model Settings")
     model_choice = st.selectbox("Select a model", list(MODEL_OPTIONS.keys()), key="model_choice")
     
     st.subheader("Database Settings")
-    st.text_input("Host", value=DB_HOST, key="Host")
-    st.text_input("Port", value=DB_PORT, key="Port")
-    st.text_input("User", value=DB_USER, key="User")
-    st.text_input("Password", type="password", value=DB_PASSWORD, key="Password")
-    st.text_input("Database", value=DB_NAME_SINGLE, key="Database")
-    
     if st.button("Test Connection"):
         with st.spinner("Testing database connection..."):
-            db_conn = DatabaseConnection(
-                host=st.session_state["Host"],
-                database=st.session_state["Database"],
-                user=st.session_state["User"],
-                password=st.session_state["Password"],
-                port=st.session_state["Port"]
-            )
+            db_conn = DatabaseConnection(dsn=DATABASE_URL)
             db_conn.test_connection()
     
     st.subheader("Chat Controls")
@@ -125,13 +144,7 @@ if question:
     with st.spinner("Processing your query..."):
         logger.info("Starting query processing pipeline")
         llm_client = LLMClient(st.session_state.model_choice)
-        db_conn = DatabaseConnection(
-            host=st.session_state["Host"],
-            database=st.session_state["Database"],
-            user=st.session_state["User"],
-            password=st.session_state["Password"],
-            port=st.session_state["Port"]
-        )
+        db_conn = DatabaseConnection(dsn=DATABASE_URL)
         
         model_history = st.session_state.chat_history[:-1] if len(st.session_state.chat_history) > 1 else None
         

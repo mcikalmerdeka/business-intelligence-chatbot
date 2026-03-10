@@ -10,8 +10,8 @@ import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import (
-    DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME_WRS,
-    MODEL_OPTIONS, SHOW_DEBUG_INFO, setup_logger
+    DATABASE_URL,
+    MODEL_OPTIONS, SHOW_DEBUG_INFO, DATASET_CONFIGS, setup_logger
 )
 from config.prompts import SQL_GENERATION_SYSTEM_PROMPT, RESPONSE_GENERATION_SYSTEM_PROMPT
 from core import DatabaseConnection, execute_sql_query, LLMClient, RAGEngine
@@ -23,14 +23,23 @@ logger = setup_logger("bi_chatbot")
 st.set_page_config(page_title="Chat with your database through LLMs")
 st.header("Chat with your database through LLMs")
 
-# Initialize chat history and RAG engine
+# Initialize chat history
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
     logger.info("Chat history initialized")
 
+# Initialize RAG engine at top level so it's ready before the sidebar renders
+_default_dataset = list(DATASET_CONFIGS.keys())[0]
+_current_dataset = st.session_state.get("active_dataset", _default_dataset)
 if "rag_engine" not in st.session_state:
-    logger.info("Initializing RAG engine")
-    st.session_state.rag_engine = RAGEngine(recreate_index=True)
+    _cfg = DATASET_CONFIGS[_current_dataset]
+    logger.info(f"Initializing RAG engine for {_current_dataset}")
+    st.session_state.rag_engine = RAGEngine(
+        recreate_index=False,  # loads from disk if index exists, builds+saves only on first run
+        schema_path=_cfg["schema_path"],
+        index_path=_cfg["faiss_path"],
+    )
+    st.session_state.active_dataset = _current_dataset
 
 # App info
 st.expander("ℹ️ About Multi-Table Database Chat with RAG").markdown(
@@ -39,10 +48,76 @@ st.expander("ℹ️ About Multi-Table Database Chat with RAG").markdown(
     - The AI assistant uses RAG (Retrieval-Augmented Generation) to find relevant schema information.
     - Only the most relevant parts of the schema are used for each query, improving accuracy.
     - Your question is converted into SQL, the database is queried, and you get a detailed analysis.
-    - Choose an AI model from the sidebar and connect to your database to get started!
+    - Choose an AI model and dataset from the sidebar to get started!
     - The chat has memory, so you can ask follow-up questions.
     """
 )
+
+_selected = st.session_state.get("dataset_choice", list(DATASET_CONFIGS.keys())[0])
+if _selected == "Olist E-Commerce":
+    st.expander("💡 Example Questions — Olist E-Commerce").markdown(
+        """
+        Copy any question below and paste it into the chat box to get started!
+
+        **Orders & Customers**
+        - What is the average monthly active user count for each year?
+        - Show me the number of customers who made more than one purchase for each year
+        - How many orders were delivered late compared to the estimated delivery date?
+        - What is the average number of days between order purchase and delivery?
+
+        **Revenue & Payments**
+        - What are the top product categories by total revenue?
+        - Show detailed information on the amount of usage for each payment type per year
+        - What is the average order value by payment type?
+        - Which states generate the most revenue?
+
+        **Sellers & Products**
+        - Which sellers have the highest number of orders?
+        - What are the top 10 product categories by number of orders?
+        - What is the average review score per product category?
+        - Which states have the most active sellers?
+
+        **Follow-up Examples** *(ask these after an initial question)*
+        - Which one showed the most significant increase?
+        - Break down those results by customer location.
+        - Show me the same trend for the top 5 categories.
+        - What was the year-over-year growth rate?
+        """
+    )
+else:
+    st.expander("💡 Example Questions — WRS EHR Healthcare").markdown(
+        """
+        Copy any question below and paste it into the chat box to get started!
+
+        **Patients & Diagnoses**
+        - How many patients were diagnosed with diabetes in 2024?
+        - What are the most common diagnoses across all facilities?
+        - How many active patients are registered per state?
+        - What is the average age of patients by primary diagnosis?
+
+        **Appointments & Providers**
+        - Which providers have the highest patient appointment counts?
+        - What is the average appointment duration by facility type?
+        - How many appointments were cancelled or no-show in the last year?
+        - Which specialties have the longest average appointment duration?
+
+        **Prescriptions & Lab Results**
+        - Show me the top 10 most prescribed medications
+        - What percentage of lab results came back abnormal?
+        - Which diagnosis types have the most associated prescriptions?
+        - What is the average number of prescriptions per appointment?
+
+        **Insurance**
+        - What insurance plans are most frequently used by patients?
+        - Which insurance plan type (HMO, PPO, etc.) has the highest average copay?
+
+        **Follow-up Examples** *(ask these after an initial question)*
+        - Which of them had the highest count?
+        - Break that down by facility type.
+        - Show me the same for active patients only.
+        - What was the trend over the past 12 months?
+        """
+    )
 
 # Sidebar
 with st.sidebar:
@@ -53,26 +128,32 @@ with st.sidebar:
         list(MODEL_OPTIONS.keys()),
         key="model_choice"
     )
-    
+
+    # Dataset selector
+    st.subheader("Dataset")
+    dataset_choice = st.selectbox(
+        "Select a dataset",
+        list(DATASET_CONFIGS.keys()),
+        key="dataset_choice"
+    )
+
+    # When dataset changes: wipe state and force a full rerun so the
+    # RAG engine and chat are rebuilt from scratch before anything renders
+    if st.session_state.get("active_dataset") != dataset_choice:
+        st.session_state.chat_history = []
+        st.session_state.active_dataset = dataset_choice
+        if "rag_engine" in st.session_state:
+            del st.session_state.rag_engine
+        logger.info(f"Dataset changed to {dataset_choice}, triggering rerun")
+        st.rerun()
+
     # Database settings
     st.subheader("Database Settings")
-    st.text_input("Host", value=DB_HOST, key="Host")
-    st.text_input("Port", value=DB_PORT, key="Port")
-    st.text_input("User", value=DB_USER, key="User")
-    st.text_input("Password", type="password", value=DB_PASSWORD, key="Password")
-    st.text_input("Database", value=DB_NAME_WRS, key="Database")
-    
     if st.button("Test Connection"):
         with st.spinner("Testing database connection..."):
-            db_conn = DatabaseConnection(
-                host=st.session_state["Host"],
-                database=st.session_state["Database"],
-                user=st.session_state["User"],
-                password=st.session_state["Password"],
-                port=st.session_state["Port"]
-            )
+            db_conn = DatabaseConnection(dsn=DATABASE_URL)
             db_conn.test_connection()
-    
+
     # Chat controls
     st.subheader("Chat Controls")
     if st.button("Clear Chat History"):
@@ -99,13 +180,7 @@ if question:
         logger.info("Starting query processing pipeline")
         # Initialize LLM client and database connection
         llm_client = LLMClient(st.session_state.model_choice)
-        db_conn = DatabaseConnection(
-            host=st.session_state["Host"],
-            database=st.session_state["Database"],
-            user=st.session_state["User"],
-            password=st.session_state["Password"],
-            port=st.session_state["Port"]
-        )
+        db_conn = DatabaseConnection(dsn=DATABASE_URL)
         
         # Get conversation history
         model_history = st.session_state.chat_history[:-1] if len(st.session_state.chat_history) > 1 else None
@@ -125,9 +200,13 @@ if question:
                     st.markdown("---")
         
         # Generate SQL
+        cfg = DATASET_CONFIGS[st.session_state.dataset_choice]
         sql_query = llm_client.generate_response(
             question=question,
-            system_prompt=SQL_GENERATION_SYSTEM_PROMPT.format(database_schema_description=retrieved_schema),
+            system_prompt=SQL_GENERATION_SYSTEM_PROMPT.format(
+                database_schema_description=retrieved_schema,
+                schema_prefix=cfg["schema_prefix"],
+            ),
             history=model_history
         )
         
