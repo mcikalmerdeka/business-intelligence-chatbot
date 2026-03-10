@@ -1,6 +1,7 @@
-# Script to create a database and multiple tables in PostgreSQL
+# Script to create and populate Olist e-commerce tables in Neon Postgres (olist schema)
 import pandas as pd
 import psycopg2
+from psycopg2.extras import execute_values
 import os
 from dotenv import load_dotenv
 
@@ -17,27 +18,21 @@ orders         = pd.read_csv(f'{base_path}orders_dataset.csv')
 products       = pd.read_csv(f'{base_path}product_dataset.csv', index_col=0)
 sellers        = pd.read_csv(f'{base_path}sellers_dataset.csv')
 
-# Replace NaN values with None (PostgreSQL's NULL)
 all_df = [customers, geolocation, order_items, order_payments, order_reviews, orders, products, sellers]
+all_df = [df.where(pd.notnull(df), None) for df in all_df]
 
-for i, df in enumerate(all_df):
-    all_df[i] = df.where(pd.notnull(df), None)
+table_names = ["customers", "geolocation", "order_items", "order_payments", "order_reviews", "orders", "products", "sellers"]
 
-# Step 2: Connect to PostgreSQL
+# Step 2: Connect to Neon via DATABASE_URL
 try:
-    conn = psycopg2.connect(
-        host="localhost",
-        database=os.getenv("DB_NAME_2"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
-    )
+    conn = psycopg2.connect(os.getenv("DATABASE_URL"))
     cursor = conn.cursor()
-    print("Connected to PostgreSQL successfully!")
+    print("Connected to Neon Postgres successfully!")
 except psycopg2.Error as e:
-    print(f"Error connecting to PostgreSQL: {e}")
+    print(f"Error connecting to Neon: {e}")
     exit()
 
-# Step 3: Define a function to map Pandas dtypes to PostgreSQL types
+# Step 3: Map Pandas dtypes to PostgreSQL types
 def map_dtype_to_sql(dtype):
     if pd.api.types.is_integer_dtype(dtype):
         return "INT"
@@ -48,47 +43,48 @@ def map_dtype_to_sql(dtype):
     elif pd.api.types.is_datetime64_any_dtype(dtype):
         return "TIMESTAMP"
     else:
-        return "VARCHAR(255)" # Default to VARCHAR for object/string types
-    
-# Step 4: Generate the SQL schema from the DataFrame
-table_name = ["customers", "geolocation", "order_items", "order_payments", "order_reviews", "orders", "products", "sellers"]
+        return "VARCHAR(255)"
 
-# Create a dictionary to store schemas for each table
-schemas = {}
+# Step 4: Create schema and tables
+try:
+    cursor.execute("CREATE SCHEMA IF NOT EXISTS olist;")
+    conn.commit()
+    print("Schema `olist` created successfully!")
+except psycopg2.Error as e:
+    conn.rollback()
+    print(f"Error creating schema: {e}")
+    exit()
 
-for df, table in zip(all_df, table_name):
-    schemas[table] = ", ".join([
+for df, table in zip(all_df, table_names):
+    col_defs = ", ".join([
         f"{col} {map_dtype_to_sql(dtype)}"
         for col, dtype in zip(df.columns, df.dtypes)
     ])
-
-# Note: the output will look something like this (postgres style):
-# id INT, price FLOAT, is_active BOOLEAN, created_at TIMESTAMP, description VARCHAR(255)
-
-# Step 5: Create the table
-for table in table_name:
-    create_table_query = f"CREATE TABLE IF NOT EXISTS {table} ({schemas[table]});"
     try:
-        cursor.execute(create_table_query)
+        cursor.execute(f"DROP TABLE IF EXISTS olist.{table};")
+        cursor.execute(f"CREATE TABLE olist.{table} ({col_defs});")
         conn.commit()
-        print(f"Table `{table}` created successfully!")
+        print(f"Table `olist.{table}` created successfully!")
     except psycopg2.Error as e:
         conn.rollback()
-        print(f"Error creating table: {e}")
+        print(f"Error creating table `olist.{table}`: {e}")
 
-# Step 6: Insert the data into the table
-for df, table in zip(all_df, table_name):
-    for _, row in df.iterrows():
-        placeholders = ", ".join(["%s"] * len(row))
-        insert_query = f"INSERT INTO {table} VALUES ({placeholders})" # Insert the data per row
-        try:
-            cursor.execute(insert_query, tuple(row))
-        except psycopg2.Error as e:
-            conn.rollback()
-            print(f"Error inserting row: {e}")
+# Step 5: Batch insert with large page_size to minimize round-trips
+for df, table in zip(all_df, table_names):
+    rows = [tuple(row) for _, row in df.iterrows()]
+    total = len(rows)
+    try:
+        execute_values(
+            cursor,
+            f"INSERT INTO olist.{table} VALUES %s",
+            rows,
+            page_size=10000
+        )
+        conn.commit()
+        print(f"Inserted {total} rows into `olist.{table}` successfully!")
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"Error inserting into `olist.{table}`: {e}")
 
-# Commit the changes and close the connection
-conn.commit()
 cursor.close()
 conn.close()
-print("Data inserted successfully!")

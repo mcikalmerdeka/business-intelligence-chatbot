@@ -1,6 +1,7 @@
-# Script to create a database and multiple tables in PostgreSQL for WRS EHR Database
+# Script to create and populate WRS EHR tables in Neon Postgres (wrs schema)
 import pandas as pd
 import psycopg2
+from psycopg2.extras import execute_values
 import os
 from dotenv import load_dotenv
 
@@ -8,36 +9,30 @@ load_dotenv()
 
 # Step 1: Load the CSV files
 base_path = 'datasets/dataset_multiple_tables/wrs_ehr_db/'
-facilities       = pd.read_csv(f'{base_path}facilities.csv')
-insurance_plans  = pd.read_csv(f'{base_path}insurance_plans.csv')
-patients         = pd.read_csv(f'{base_path}patients.csv')
-providers        = pd.read_csv(f'{base_path}providers.csv')
-appointments     = pd.read_csv(f'{base_path}appointments.csv')
-diagnoses        = pd.read_csv(f'{base_path}diagnoses.csv')
-prescriptions    = pd.read_csv(f'{base_path}prescriptions.csv')
-lab_results      = pd.read_csv(f'{base_path}lab_results.csv')
+facilities      = pd.read_csv(f'{base_path}facilities.csv')
+insurance_plans = pd.read_csv(f'{base_path}insurance_plans.csv')
+patients        = pd.read_csv(f'{base_path}patients.csv')
+providers       = pd.read_csv(f'{base_path}providers.csv')
+appointments    = pd.read_csv(f'{base_path}appointments.csv')
+diagnoses       = pd.read_csv(f'{base_path}diagnoses.csv')
+prescriptions   = pd.read_csv(f'{base_path}prescriptions.csv')
+lab_results     = pd.read_csv(f'{base_path}lab_results.csv')
 
-# Replace NaN values with None (PostgreSQL's NULL)
 all_df = [facilities, insurance_plans, patients, providers, appointments, diagnoses, prescriptions, lab_results]
+all_df = [df.where(pd.notnull(df), None) for df in all_df]
 
-for i, df in enumerate(all_df):
-    all_df[i] = df.where(pd.notnull(df), None)
+table_names = ["facilities", "insurance_plans", "patients", "providers", "appointments", "diagnoses", "prescriptions", "lab_results"]
 
-# Step 2: Connect to PostgreSQL
+# Step 2: Connect to Neon via DATABASE_URL
 try:
-    conn = psycopg2.connect(
-        host="localhost",
-        database=os.getenv("DB_NAME_3"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
-    )
+    conn = psycopg2.connect(os.getenv("DATABASE_URL"))
     cursor = conn.cursor()
-    print("Connected to PostgreSQL successfully!")
+    print("Connected to Neon Postgres successfully!")
 except psycopg2.Error as e:
-    print(f"Error connecting to PostgreSQL: {e}")
+    print(f"Error connecting to Neon: {e}")
     exit()
 
-# Step 3: Define a function to map Pandas dtypes to PostgreSQL types
+# Step 3: Map Pandas dtypes to PostgreSQL types
 def map_dtype_to_sql(dtype):
     if pd.api.types.is_integer_dtype(dtype):
         return "INT"
@@ -48,47 +43,42 @@ def map_dtype_to_sql(dtype):
     elif pd.api.types.is_datetime64_any_dtype(dtype):
         return "TIMESTAMP"
     else:
-        return "VARCHAR(255)" # Default to VARCHAR for object/string types
-    
-# Step 4: Generate the SQL schema from the DataFrame
-table_name = ["facilities", "insurance_plans", "patients", "providers", "appointments", "diagnoses", "prescriptions", "lab_results"]
+        return "VARCHAR(255)"
 
-# Create a dictionary to store schemas for each table
-schemas = {}
+# Step 4: Create schema and tables
+try:
+    cursor.execute("CREATE SCHEMA IF NOT EXISTS wrs;")
+    conn.commit()
+    print("Schema `wrs` created successfully!")
+except psycopg2.Error as e:
+    conn.rollback()
+    print(f"Error creating schema: {e}")
+    exit()
 
-for df, table in zip(all_df, table_name):
-    schemas[table] = ", ".join([
+for df, table in zip(all_df, table_names):
+    col_defs = ", ".join([
         f"{col} {map_dtype_to_sql(dtype)}"
         for col, dtype in zip(df.columns, df.dtypes)
     ])
-
-# Note: the output will look something like this (postgres style):
-# id INT, price FLOAT, is_active BOOLEAN, created_at TIMESTAMP, description VARCHAR(255)
-
-# Step 5: Create the table
-for table in table_name:
-    create_table_query = f"CREATE TABLE IF NOT EXISTS {table} ({schemas[table]});"
     try:
-        cursor.execute(create_table_query)
+        cursor.execute(f"DROP TABLE IF EXISTS wrs.{table};")
+        cursor.execute(f"CREATE TABLE wrs.{table} ({col_defs});")
         conn.commit()
-        print(f"Table `{table}` created successfully!")
+        print(f"Table `wrs.{table}` created successfully!")
     except psycopg2.Error as e:
         conn.rollback()
-        print(f"Error creating table: {e}")
+        print(f"Error creating table `wrs.{table}`: {e}")
 
-# Step 6: Insert the data into the table
-for df, table in zip(all_df, table_name):
-    for _, row in df.iterrows():
-        placeholders = ", ".join(["%s"] * len(row))
-        insert_query = f"INSERT INTO {table} VALUES ({placeholders})" # Insert the data per row
-        try:
-            cursor.execute(insert_query, tuple(row))
-        except psycopg2.Error as e:
-            conn.rollback()
-            print(f"Error inserting row: {e}")
+# Step 5: Batch insert
+for df, table in zip(all_df, table_names):
+    rows = [tuple(row) for _, row in df.iterrows()]
+    try:
+        execute_values(cursor, f"INSERT INTO wrs.{table} VALUES %s", rows, page_size=10000)
+        conn.commit()
+        print(f"Inserted {len(rows)} rows into `wrs.{table}` successfully!")
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"Error inserting into `wrs.{table}`: {e}")
 
-# Commit the changes and close the connection
-conn.commit()
 cursor.close()
 conn.close()
-print("Data inserted successfully!")
