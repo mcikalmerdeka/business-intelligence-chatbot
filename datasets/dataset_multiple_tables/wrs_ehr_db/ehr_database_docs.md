@@ -33,7 +33,7 @@ Stores information about healthcare facilities where medical services are provid
 | phone | VARCHAR(20) | YES | Contact phone number (Format: 555-XXX-XXXX) |
 | total_beds | INTEGER | YES | Total number of beds available (NULL for facilities without bed capacity) |
 | is_active | BOOLEAN | YES | Indicates if the facility is currently active (TRUE/FALSE) |
-| created_date | TIMESTAMP | YES | Date and time when the facility record was created |
+| created_date | TIMESTAMP | YES | Date and time when the record was created |
 
 #### Relationships:
 - Referenced by `providers.facility_id` (One-to-Many: One facility can have multiple providers)
@@ -60,7 +60,7 @@ Contains information about insurance plans accepted by the healthcare system.
 | deductible_amount | DECIMAL(10,2) | YES | Annual deductible amount in USD |
 | out_of_pocket_max | DECIMAL(10,2) | YES | Maximum out-of-pocket expense limit in USD |
 | is_active | BOOLEAN | YES | Indicates if the plan is currently active and accepting enrollments |
-| created_date | TIMESTAMP | YES | Date and time when the plan record was created |
+| created_date | TIMESTAMP | YES | Date and time when the record was created |
 
 #### Relationships:
 - Referenced by `patients.primary_insurance_id` (One-to-Many: One plan can cover multiple patients)
@@ -138,7 +138,7 @@ Contains information about healthcare providers (physicians, nurse practitioners
 | is_accepting_patients | BOOLEAN | YES | Indicates if the provider is currently accepting new patients |
 | is_active | BOOLEAN | YES | Indicates if the provider is currently active in the system |
 | hire_date | DATE | YES | Date when the provider was hired |
-| created_date | TIMESTAMP | YES | Date and time when the provider record was created |
+| created_date | TIMESTAMP | YES | Date and time when the record was created |
 
 #### Relationships:
 - References `facilities.facility_id` (Many-to-One: Multiple providers can work at one facility)
@@ -175,7 +175,7 @@ Tracks all patient appointments including scheduling, status, and visit details.
 | copay_collected | DECIMAL(10,2) | YES | Copayment amount collected in USD |
 | checked_in_time | TIMESTAMP | YES | Actual time when patient checked in for the appointment |
 | checked_out_time | TIMESTAMP | YES | Actual time when patient checked out after the appointment |
-| created_date | TIMESTAMP | YES | Date and time when the appointment was created |
+| created_date | TIMESTAMP | YES | Date and time when the record was created |
 
 #### Relationships:
 - References `patients.patient_id` (Many-to-One: Multiple appointments for one patient)
@@ -210,7 +210,7 @@ Records all diagnoses made during patient encounters.
 | onset_date | DATE | YES | Date when the condition first began (if known) |
 | status | VARCHAR(50) | YES | Current status of the diagnosis (Active, Resolved, Chronic, Recurrent) |
 | notes | TEXT | YES | Additional clinical notes about the diagnosis |
-| created_date | TIMESTAMP | YES | Date and time when the diagnosis was recorded |
+| created_date | TIMESTAMP | YES | Date and time when the record was created |
 
 #### Relationships:
 - References `appointments.appointment_id` (Many-to-One: Multiple diagnoses can be made in one appointment)
@@ -260,7 +260,7 @@ Stores all medication prescriptions written for patients.
 | status | VARCHAR(50) | YES | Current status (Active, Completed, Discontinued, On Hold) |
 | is_controlled_substance | BOOLEAN | YES | Indicates if medication is a controlled substance requiring special handling |
 | notes | TEXT | YES | Special instructions or notes (e.g., "Take with food", "May cause drowsiness") |
-| created_date | TIMESTAMP | YES | Date and time when the prescription was created |
+| created_date | TIMESTAMP | YES | Date and time when the record was created |
 
 #### Relationships:
 - References `appointments.appointment_id` (Many-to-One: Multiple prescriptions can be written during one appointment)
@@ -305,7 +305,7 @@ Contains laboratory test results and diagnostic data.
 | result_date | TIMESTAMP | YES | Date and time when result was finalized |
 | performing_lab | VARCHAR(200) | YES | Name of laboratory that performed the test (Quest Diagnostics, LabCorp, Mayo Clinic Laboratories, etc.) |
 | notes | TEXT | YES | Additional notes (e.g., "Fasting specimen", "Critical value called to provider") |
-| created_date | TIMESTAMP | YES | Date and time when the result was entered into system |
+| created_date | TIMESTAMP | YES | Date and time when the record was created |
 
 #### Relationships:
 - References `appointments.appointment_id` (Many-to-One: Multiple lab results can be ordered from one appointment)
@@ -360,14 +360,14 @@ appointments (1) ----< lab_results (M)
 1. **Find all active patients**
 ```sql
 SELECT patient_id, first_name, last_name, date_of_birth, phone
-FROM patients
+FROM wrs.patients
 WHERE is_active = TRUE;
 ```
 
 2. **List all providers by specialty**
 ```sql
 SELECT provider_id, first_name, last_name, specialty, facility_id
-FROM providers
+FROM wrs.providers
 WHERE specialty = 'Cardiology'
 AND is_active = TRUE;
 ```
@@ -375,8 +375,8 @@ AND is_active = TRUE;
 3. **Get upcoming appointments**
 ```sql
 SELECT appointment_id, patient_id, provider_id, appointment_date, appointment_time, status
-FROM appointments
-WHERE appointment_date >= CURRENT_DATE
+FROM wrs.appointments
+WHERE appointment_date::DATE >= CURRENT_DATE
 AND status = 'Scheduled'
 ORDER BY appointment_date, appointment_time;
 ```
@@ -386,8 +386,8 @@ ORDER BY appointment_date, appointment_time;
 4. **Find patients with diabetes diagnoses**
 ```sql
 SELECT DISTINCT p.patient_id, p.first_name, p.last_name, d.diagnosis_description
-FROM patients p
-JOIN diagnoses d ON p.patient_id = d.patient_id
+FROM wrs.patients p
+JOIN wrs.diagnoses d ON p.patient_id = d.patient_id
 WHERE d.icd10_code LIKE 'E11%'
 AND d.status = 'Active';
 ```
@@ -395,8 +395,8 @@ AND d.status = 'Active';
 5. **Count appointments by provider**
 ```sql
 SELECT pr.provider_id, pr.first_name, pr.last_name, COUNT(a.appointment_id) as total_appointments
-FROM providers pr
-LEFT JOIN appointments a ON pr.provider_id = a.provider_id
+FROM wrs.providers pr
+LEFT JOIN wrs.appointments a ON pr.provider_id = a.provider_id
 GROUP BY pr.provider_id, pr.first_name, pr.last_name
 ORDER BY total_appointments DESC;
 ```
@@ -404,7 +404,7 @@ ORDER BY total_appointments DESC;
 6. **List active prescriptions for a specific patient**
 ```sql
 SELECT prescription_id, medication_name, dosage, frequency, prescription_date, refills_allowed
-FROM prescriptions
+FROM wrs.prescriptions
 WHERE patient_id = 'PAT000001'
 AND status = 'Active'
 ORDER BY prescription_date DESC;
@@ -416,8 +416,8 @@ ORDER BY prescription_date DESC;
 ```sql
 SELECT DISTINCT p.patient_id, p.first_name, p.last_name, 
        l.test_name, l.result_value, l.abnormal_flag
-FROM patients p
-JOIN lab_results l ON p.patient_id = l.patient_id
+FROM wrs.patients p
+JOIN wrs.lab_results l ON p.patient_id = l.patient_id
 WHERE l.abnormal_flag IN ('High', 'Low', 'Critical')
 AND l.status = 'Final'
 ORDER BY l.abnormal_flag, p.last_name;
@@ -428,7 +428,7 @@ ORDER BY l.abnormal_flag, p.last_name;
 SELECT appointment_type, 
        AVG(duration_minutes) as avg_duration,
        COUNT(*) as total_appointments
-FROM appointments
+FROM wrs.appointments
 WHERE status = 'Completed'
 GROUP BY appointment_type
 ORDER BY avg_duration DESC;
@@ -438,9 +438,9 @@ ORDER BY avg_duration DESC;
 ```sql
 SELECT pr.provider_id, pr.first_name, pr.last_name, pr.specialty,
        COUNT(d.diagnosis_id) as diagnosis_count
-FROM providers pr
-JOIN diagnoses d ON pr.provider_id = d.provider_id
-WHERE d.created_date >= CURRENT_DATE - INTERVAL '6 months'
+FROM wrs.providers pr
+JOIN wrs.diagnoses d ON pr.provider_id = d.provider_id
+WHERE d.created_date::TIMESTAMP >= CURRENT_DATE - INTERVAL '6 months'
 GROUP BY pr.provider_id, pr.first_name, pr.last_name, pr.specialty
 ORDER BY diagnosis_count DESC
 LIMIT 10;
@@ -454,11 +454,11 @@ SELECT a.appointment_id, a.appointment_date,
        a.chief_complaint,
        STRING_AGG(DISTINCT d.diagnosis_description, '; ') as diagnoses,
        STRING_AGG(DISTINCT rx.medication_name, '; ') as medications
-FROM appointments a
-JOIN patients p ON a.patient_id = p.patient_id
-JOIN providers pr ON a.provider_id = pr.provider_id
-LEFT JOIN diagnoses d ON a.appointment_id = d.appointment_id
-LEFT JOIN prescriptions rx ON a.appointment_id = rx.appointment_id
+FROM wrs.appointments a
+JOIN wrs.patients p ON a.patient_id = p.patient_id
+JOIN wrs.providers pr ON a.provider_id = pr.provider_id
+LEFT JOIN wrs.diagnoses d ON a.appointment_id = d.appointment_id
+LEFT JOIN wrs.prescriptions rx ON a.appointment_id = rx.appointment_id
 WHERE a.status = 'Completed'
 GROUP BY a.appointment_id, a.appointment_date, p.first_name, p.last_name, 
          pr.first_name, pr.last_name, a.chief_complaint
@@ -508,21 +508,21 @@ CREATE DATABASE wrs_health_ehr;
 
 ```sql
 -- Check record counts
-SELECT 'facilities' as table_name, COUNT(*) as record_count FROM facilities
+SELECT 'facilities' as table_name, COUNT(*) as record_count FROM wrs.facilities
 UNION ALL
-SELECT 'insurance_plans', COUNT(*) FROM insurance_plans
+SELECT 'insurance_plans', COUNT(*) FROM wrs.insurance_plans
 UNION ALL
-SELECT 'patients', COUNT(*) FROM patients
+SELECT 'patients', COUNT(*) FROM wrs.patients
 UNION ALL
-SELECT 'providers', COUNT(*) FROM providers
+SELECT 'providers', COUNT(*) FROM wrs.providers
 UNION ALL
-SELECT 'appointments', COUNT(*) FROM appointments
+SELECT 'appointments', COUNT(*) FROM wrs.appointments
 UNION ALL
-SELECT 'diagnoses', COUNT(*) FROM diagnoses
+SELECT 'diagnoses', COUNT(*) FROM wrs.diagnoses
 UNION ALL
-SELECT 'prescriptions', COUNT(*) FROM prescriptions
+SELECT 'prescriptions', COUNT(*) FROM wrs.prescriptions
 UNION ALL
-SELECT 'lab_results', COUNT(*) FROM lab_results;
+SELECT 'lab_results', COUNT(*) FROM wrs.lab_results;
 ```
 
 ---
