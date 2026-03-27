@@ -1,10 +1,10 @@
 # Business Intelligence Chatbot with Langchain
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-green?style=for-the-badge&logo=streamlit)](https://business-intelligence-chatbot-h4cd74wybr5j3hhmwb5tot.streamlit.app/)
-
 ![Project Header](assets/Project%20Header.jpg)
 
 This repo is for using LLMs to chat with your SQL database. Inspired by this [Gemini Chatbot repo](https://github.com/ardyadipta/gemini_chatbot_sql). Instead of using MySQL I used PostgreSQL and instead of using Google Gemini model series, I experimented using OpenAI (GPT-4.1 mini) and Anthropic (Claude Haiku 4.5) models which are cost-effective for production use.
+
+Test the application here: [![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-green?style=for-the-badge&logo=streamlit)](https://business-intelligence-chatbot-h4cd74wybr5j3hhmwb5tot.streamlit.app/)
 
 ## 🎯 Objective and Project Origin
 
@@ -136,7 +136,6 @@ Both multi-table apps include a **dataset selector** in the sidebar to switch be
    ```
 
    **Required dependencies:**
-
    - faiss-cpu>=1.13.2
    - langchain>=1.2.3
    - langchain-anthropic>=1.3.1
