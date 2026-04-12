@@ -41,8 +41,5 @@ DATASET_CONFIGS = {
     },
 }
 
-# Legacy single-path kept for backward compat (basic multi app)
-SCHEMA_PATH_MULTI = DATASET_CONFIGS["WRS EHR Database"]["schema_path"]
-
 # App Configuration
 SHOW_DEBUG_INFO = True  # Show SQL queries and results for debugging

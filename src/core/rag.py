@@ -6,16 +6,15 @@ from typing import List
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from config import EMBEDDING_MODEL, FAISS_INDEX_PATH, SCHEMA_PATH_MULTI, logger_rag
+from config import EMBEDDING_MODEL, FAISS_INDEX_PATH, logger_rag
 
 logger = logger_rag
 
 
-def load_schema_description(schema_path: str = None) -> str:
+def load_schema_description(schema_path: str) -> str:
     """Load database schema description from a local file."""
-    path = schema_path or SCHEMA_PATH_MULTI
     try:
-        with open(path, "r", encoding="utf-8") as file:
+        with open(schema_path, "r", encoding="utf-8") as file:
             return file.read()
     except Exception as e:
         st.error(f"Error reading schema file: {e}")
@@ -63,10 +62,10 @@ class RAGEngine:
 
         Args:
             recreate_index: Whether to recreate the FAISS index
-            schema_path: Path to the schema markdown file (defaults to WRS)
+            schema_path: Path to the schema markdown file (required)
             index_path: Path to store/load the FAISS index (defaults to FAISS_INDEX_PATH)
         """
-        self.schema_path = schema_path or SCHEMA_PATH_MULTI
+        self.schema_path = schema_path
         self.index_path = index_path or FAISS_INDEX_PATH
         logger.info(f"Initializing RAG engine (schema={self.schema_path}, recreate={recreate_index})")
         self.embedding_model = OpenAIEmbeddings(model=EMBEDDING_MODEL)
@@ -142,16 +141,4 @@ class RAGEngine:
         logger.info(f"Retrieved {len(results)} relevant schema chunks")
         return results
     
-    def get_retrieved_schema_text(self, query: str, k: int = 5) -> str:
-        """
-        Get retrieved schema as concatenated text
-        
-        Args:
-            query: User question
-            k: Number of chunks to retrieve
-            
-        Returns:
-            Concatenated schema text
-        """
-        docs = self.retrieve_relevant_schema(query, k)
-        return "\n".join([doc.page_content for doc in docs])
+
